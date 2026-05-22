@@ -1,0 +1,6 @@
+{
+  "name": "page-summarizer-backend",
+  "version": "1.0.0",
+  "description": "Backend for Page Summarizer Chrome Extension",
+  "private": true
+}
