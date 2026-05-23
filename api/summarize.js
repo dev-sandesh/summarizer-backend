@@ -80,7 +80,7 @@ ${text.substring(0, 14000)}`;
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
+          model: 'gemma2-9b-it',
           messages: [{ role: 'user', content: prompt }],
           max_tokens: 1024,
           temperature: 0.4,
