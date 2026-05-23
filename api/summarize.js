@@ -68,29 +68,34 @@ Article content:
 ${text.substring(0, 14000)}`;
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: missing API key.' });
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+    const groqRes = await fetch(
+      'https://api.groq.com/openai/v1/chat/completions',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.4 },
+          model: 'llama-3.1-8b-instant',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 1024,
+          temperature: 0.4,
         }),
       }
     );
 
-    if (!geminiRes.ok) {
-      const err = await geminiRes.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Gemini API error ${geminiRes.status}`);
+    if (!groqRes.ok) {
+      const err = await groqRes.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `Groq API error ${groqRes.status}`);
     }
 
-    const data = await geminiRes.json();
-    const summary = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!summary) throw new Error('No summary returned from Gemini.');
+    const data = await groqRes.json();
+    const summary = data?.choices?.[0]?.message?.content;
+    if (!summary) throw new Error('No summary returned from Groq.');
 
     return res.status(200).json({ summary });
 
