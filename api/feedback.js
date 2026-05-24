@@ -25,6 +25,7 @@ module.exports = async function handler(req, res) {
     }),
   }).catch(() => null);
 
-  if (!r?.ok) return res.status(502).json({ error: 'Failed to send' });
+  const body = await r?.json().catch(() => ({}));
+  if (!r?.ok) return res.status(502).json({ error: 'Failed to send', detail: body });
   return res.status(200).json({ ok: true });
 };
