@@ -96,26 +96,17 @@ module.exports = async function handler(req, res) {
 };
 
 async function capture(distinctId, event, properties = {}) {
-  if (!process.env.POSTHOG_API_KEY) {
-    console.log('[PostHog] skipped — POSTHOG_API_KEY not set');
-    return;
-  }
-  try {
-    const res = await fetch(POSTHOG_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key:     process.env.POSTHOG_API_KEY,
-        event,
-        distinct_id: distinctId,
-        properties,
-      }),
-    });
-    const body = await res.text();
-    console.log(`[PostHog] ${event} → ${res.status} ${body}`);
-  } catch (err) {
-    console.log(`[PostHog] fetch error: ${err.message}`);
-  }
+  if (!process.env.POSTHOG_API_KEY) return;
+  await fetch(POSTHOG_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key:     process.env.POSTHOG_API_KEY,
+      event,
+      distinct_id: distinctId,
+      properties,
+    }),
+  }).catch(() => {});
 }
 
 function hashId(ip) {
