@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/summarize.js": {
-      "maxDuration": 30
+    "api/*.js": {
+      "runtime": "nodejs20.x"
     }
   }
 }
