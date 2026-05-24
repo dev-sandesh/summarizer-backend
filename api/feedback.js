@@ -11,21 +11,24 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'No message provided' });
   }
 
-  if (!process.env.WEB3FORMS_KEY) {
+  if (!process.env.RESEND_API_KEY) {
     return res.status(500).json({ error: 'Feedback not configured' });
   }
 
-  const r = await fetch('https://api.web3forms.com/submit', {
+  const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type':  'application/json',
+    },
     body: JSON.stringify({
-      access_key: process.env.WEB3FORMS_KEY,
-      subject:    'Page Summarizer — User Feedback',
-      message:    message.trim(),
+      from:    'Page Summarizer <onboarding@resend.dev>',
+      to:      'iamsandeshjain@gmail.com',
+      subject: 'Page Summarizer — User Feedback',
+      text:    message.trim(),
     }),
   }).catch(() => null);
 
-  const raw = await r?.text().catch(() => '');
-  if (!r?.ok) return res.status(502).json({ error: 'Failed to send', status: r?.status, detail: raw });
+  if (!r?.ok) return res.status(502).json({ error: 'Failed to send' });
   return res.status(200).json({ ok: true });
 };
