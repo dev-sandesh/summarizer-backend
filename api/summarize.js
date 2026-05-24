@@ -1,6 +1,6 @@
-// @ts-check
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+const GROQ_API_URL    = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL      = 'llama-3.3-70b-versatile';
+const POSTHOG_API_URL = 'https://us.i.posthog.com/capture/';
 
 const STYLE_PROMPTS = {
   bullet:    'Summarize as a concise bullet-point list (5-8 bullets). Each bullet captures one key idea.',
@@ -34,6 +34,11 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Not enough article content' });
   }
 
+  // Anonymised distinct_id — first 16 chars of a SHA-256 of the IP.
+  // Lets us count unique users without storing PII.
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
+  const distinctId = await hashId(ip);
+
   const s = STYLE_PROMPTS[style] || STYLE_PROMPTS.bullet;
   const t = TONE_PROMPTS[tone]   || TONE_PROMPTS.professional;
   const systemPrompt = `You are an assistant that summarizes web articles. ${s} ${t} Output only the summary — no preamble like "Here is a summary of...".`;
@@ -58,20 +63,54 @@ module.exports = async function handler(req, res) {
     });
 
     if (groqRes.status === 429) {
+      capture(distinctId, 'summarize_failed', { reason: 'groq_quota', style, tone });
       return res.status(429).json({ error: 'Daily quota exhausted. Please try again tomorrow.' });
     }
     if (!groqRes.ok) {
       const body = await groqRes.json().catch(() => ({}));
+      capture(distinctId, 'summarize_failed', { reason: 'groq_error', status: groqRes.status, style, tone });
       return res.status(502).json({ error: body?.error?.message || `Groq error ${groqRes.status}` });
     }
 
     const data    = await groqRes.json();
     const summary = data.choices?.[0]?.message?.content?.trim();
-    if (!summary) return res.status(502).json({ error: 'Empty response from Groq' });
+    if (!summary) {
+      capture(distinctId, 'summarize_failed', { reason: 'empty_response', style, tone });
+      return res.status(502).json({ error: 'Empty response from Groq' });
+    }
+
+    capture(distinctId, 'page_summarized', {
+      style,
+      tone,
+      text_length: text.length,
+      summary_length: summary.length,
+      model: GROQ_MODEL,
+    });
 
     return res.status(200).json({ summary, model: 'Llama 3.3 70B · Groq' });
 
   } catch (err) {
+    capture(distinctId, 'summarize_failed', { reason: 'server_error', style, tone });
     return res.status(500).json({ error: 'Server error. Please try again.' });
   }
+};
+
+// Fire-and-forget — never awaited, never blocks the response
+function capture(distinctId, event, properties = {}) {
+  if (!process.env.POSTHOG_API_KEY) return;
+  fetch(POSTHOG_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key:     process.env.POSTHOG_API_KEY,
+      event,
+      distinct_id: distinctId,
+      properties,
+    }),
+  }).catch(() => {}); // swallow errors silently
+}
+
+async function hashId(ip) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
