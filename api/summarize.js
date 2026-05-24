@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
   // Anonymised distinct_id — first 16 chars of a SHA-256 of the IP.
   // Lets us count unique users without storing PII.
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
-  const distinctId = await hashId(ip);
+  const distinctId = hashId(ip);
 
   const s = STYLE_PROMPTS[style] || STYLE_PROMPTS.bullet;
   const t = TONE_PROMPTS[tone]   || TONE_PROMPTS.professional;
@@ -63,23 +63,23 @@ module.exports = async function handler(req, res) {
     });
 
     if (groqRes.status === 429) {
-      capture(distinctId, 'summarize_failed', { reason: 'groq_quota', style, tone });
+      await capture(distinctId, 'summarize_failed', { reason: 'groq_quota', style, tone });
       return res.status(429).json({ error: 'Daily quota exhausted. Please try again tomorrow.' });
     }
     if (!groqRes.ok) {
       const body = await groqRes.json().catch(() => ({}));
-      capture(distinctId, 'summarize_failed', { reason: 'groq_error', status: groqRes.status, style, tone });
+      await capture(distinctId, 'summarize_failed', { reason: 'groq_error', status: groqRes.status, style, tone });
       return res.status(502).json({ error: body?.error?.message || `Groq error ${groqRes.status}` });
     }
 
     const data    = await groqRes.json();
     const summary = data.choices?.[0]?.message?.content?.trim();
     if (!summary) {
-      capture(distinctId, 'summarize_failed', { reason: 'empty_response', style, tone });
+      await capture(distinctId, 'summarize_failed', { reason: 'empty_response', style, tone });
       return res.status(502).json({ error: 'Empty response from Groq' });
     }
 
-    capture(distinctId, 'page_summarized', {
+    await capture(distinctId, 'page_summarized', {
       style,
       tone,
       text_length: text.length,
@@ -90,27 +90,34 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ summary, model: 'Llama 3.3 70B · Groq' });
 
   } catch (err) {
-    capture(distinctId, 'summarize_failed', { reason: 'server_error', style, tone });
+    await capture(distinctId, 'summarize_failed', { reason: 'server_error', style, tone });
     return res.status(500).json({ error: 'Server error. Please try again.' });
   }
 };
 
-// Fire-and-forget — never awaited, never blocks the response
-function capture(distinctId, event, properties = {}) {
-  if (!process.env.POSTHOG_API_KEY) return;
-  fetch(POSTHOG_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      api_key:     process.env.POSTHOG_API_KEY,
-      event,
-      distinct_id: distinctId,
-      properties,
-    }),
-  }).catch(() => {}); // swallow errors silently
+async function capture(distinctId, event, properties = {}) {
+  if (!process.env.POSTHOG_API_KEY) {
+    console.log('[PostHog] skipped — POSTHOG_API_KEY not set');
+    return;
+  }
+  try {
+    const res = await fetch(POSTHOG_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key:     process.env.POSTHOG_API_KEY,
+        event,
+        distinct_id: distinctId,
+        properties,
+      }),
+    });
+    const body = await res.text();
+    console.log(`[PostHog] ${event} → ${res.status} ${body}`);
+  } catch (err) {
+    console.log(`[PostHog] fetch error: ${err.message}`);
+  }
 }
 
-async function hashId(ip) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+function hashId(ip) {
+  return require('crypto').createHash('sha256').update(ip).digest('hex').slice(0, 16);
 }
