@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Page Summarizer</title>
+<meta name="description" content="Privacy policy for the Page Summarizer Chrome extension.">
+<link rel="icon" type="image/png" href="assets/icon.png">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .legal {
+    max-width: 720px;
+    padding: 70px 0 90px;
+  }
+  .legal h1 {
+    font-size: 40px;
+    margin-bottom: 8px;
+    letter-spacing: -1px;
+  }
+  .legal .updated {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+  .legal p {
+    color: var(--text-mute);
+    font-size: 16px;
+    line-height: 1.75;
+    margin-bottom: 22px;
+  }
+  .legal strong { color: var(--text); font-weight: 600; }
+  .legal a { color: var(--accent); text-decoration: none; }
+  .legal a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a href="/" class="brand">
+    <img src="assets/icon.png" alt="" class="brand-logo">
+    <span>Page Summarizer</span>
+  </a>
+  <a class="btn btn-primary btn-sm" href="https://chromewebstore.google.com/detail/page-summarizer-%E2%80%94-ai/phkbidbcfhkcdjockgdhniabfdioigea" target="_blank" rel="noopener">
+    Add to Chrome
+  </a>
+</header>
+
+<main class="container legal">
+  <h1>Privacy Policy</h1>
+  <div class="updated">Last updated: May 24, 2026</div>
+
+  <p>When you click <strong>Summarize Current Page</strong>, Page Summarizer extracts the readable text of your current tab and sends it to our backend, which forwards it to the Groq AI service to generate a summary. Article text is processed only to generate the summary and is not retained on our servers.</p>
+
+  <p>We log anonymous usage events (which summary style was used, text length, hashed IP) to understand how the extension is used and to monitor errors. We do not collect names, emails, browsing history, or any other personally identifying information.</p>
+
+  <p>If you enable <strong>Bring Your Own Key</strong> in Settings, your API key is stored only in your browser (<code>chrome.storage.local</code>) and never sent to our servers — your chosen AI provider receives the request directly from your browser.</p>
+
+  <p>If you submit feedback through the popup, the message you type is emailed to the developer. No automatic information is included.</p>
+
+  <p>Contact: <a href="mailto:iamsandeshjain@gmail.com">iamsandeshjain@gmail.com</a></p>
+</main>
+
+<footer class="footer">
+  <div class="container footer-grid">
+    <div>
+      <div class="brand brand-footer">
+        <img src="assets/icon.png" alt="" class="brand-logo">
+        <span>Page Summarizer</span>
+      </div>
+      <p class="footer-tag">AI summaries for any webpage. Free, private, fast.</p>
+    </div>
+    <div class="footer-links">
+      <a href="/privacy">Privacy</a>
+      <a href="https://chromewebstore.google.com/detail/page-summarizer-%E2%80%94-ai/phkbidbcfhkcdjockgdhniabfdioigea" target="_blank" rel="noopener">Install</a>
+      <a href="mailto:iamsandeshjain@gmail.com">Contact</a>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 Page Summarizer · Made by Sandesh Jain</span>
+  </div>
+</footer>
+
+</body>
+</html>
