@@ -1,106 +1,77 @@
-// Vercel serverless function — CommonJS syntax for maximum compatibility
+// @ts-check
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL   = 'llama-3.3-70b-versatile';
 
 const STYLE_PROMPTS = {
-  bullet:    'Provide a summary as clear, concise bullet points (5–8 bullets). Each bullet should capture one key idea. Use "•" as the bullet character.',
-  tldr:      'Write a single TL;DR paragraph (3–5 sentences) that captures the essence of the article.',
-  takeaways: 'Extract 5 detailed key takeaways. For each, write 2–3 sentences explaining why it matters. Number them 1–5.',
-  qa:        'Summarize as 4–5 Q&A pairs. Format each as "Q: [question]\\nA: [answer]".',
+  bullet:    'Summarize as a concise bullet-point list (5-8 bullets). Each bullet captures one key idea.',
+  tldr:      'Write a single TL;DR paragraph (3-5 sentences) capturing the most important points.',
+  takeaways: 'Extract 5-7 key takeaways. Each should be a complete, standalone insight.',
+  qa:        'Generate 4-5 Q&A pairs covering the most important aspects. Format as "Q: ...\nA: ..."',
 };
 
 const TONE_PROMPTS = {
   professional: 'Use a professional, formal tone.',
-  casual:       'Use a friendly, conversational tone as if explaining to a colleague.',
-  technical:    'Be concise and technical — skip fluff, focus on data and specifics.',
-  eli5:         'Explain simply, as if to someone with no background in the topic (ELI5 style).',
+  casual:       'Use a casual, conversational tone — like explaining to a friend.',
+  technical:    'Be concise and precise. Use technical language where appropriate. Avoid filler.',
+  eli5:         'Explain as simply as possible, as if to someone with no background. No jargon.',
 };
 
-// Simple in-memory rate limit: max 10 requests per IP per minute
-const rateLimitMap = new Map();
-function isRateLimited(ip) {
-  const now = Date.now();
-  const windowMs = 60_000;
-  const maxReqs = 10;
-  const entry = rateLimitMap.get(ip) || { count: 0, start: now };
-  if (now - entry.start > windowMs) {
-    rateLimitMap.set(ip, { count: 1, start: now });
-    return false;
-  }
-  if (entry.count >= maxReqs) return true;
-  entry.count++;
-  rateLimitMap.set(ip, entry);
-  return false;
-}
-
 module.exports = async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Extension-Token');
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
-  // Verify shared token
   const token = req.headers['x-extension-token'];
-  if (token !== process.env.EXTENSION_TOKEN) {
+  if (process.env.EXTENSION_TOKEN && token !== process.env.EXTENSION_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Rate limit by IP
-  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  if (isRateLimited(ip)) {
-    return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
+  const { title, text, style = 'bullet', tone = 'professional' } = req.body || {};
+  if (!text || text.length < 100) {
+    return res.status(400).json({ error: 'Not enough article content' });
   }
 
-  const { title = '', text = '', style = 'bullet', tone = 'professional' } = req.body || {};
-  if (!text || text.trim().length < 50) {
-    return res.status(400).json({ error: 'No article content provided.' });
-  }
-
-  const stylePrompt = STYLE_PROMPTS[style] || STYLE_PROMPTS.bullet;
-  const tonePrompt  = TONE_PROMPTS[tone]   || TONE_PROMPTS.professional;
-
-  const prompt = `You are an expert article summarizer. ${tonePrompt} ${stylePrompt} Do not include any preamble — output only the summary itself.
-
-Article title: "${title}"
-
-Article content:
-${text.substring(0, 14000)}`;
+  const s = STYLE_PROMPTS[style] || STYLE_PROMPTS.bullet;
+  const t = TONE_PROMPTS[tone]   || TONE_PROMPTS.professional;
+  const systemPrompt = `You are an assistant that summarizes web articles. ${s} ${t} Output only the summary — no preamble like "Here is a summary of...".`;
+  const userMessage  = title ? `Title: ${title}\n\n${text}` : text;
 
   try {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: missing API key.' });
+    const groqRes = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model:    GROQ_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userMessage  },
+        ],
+        max_tokens:  1024,
+        temperature: 0.3,
+      }),
+    });
 
-    const groqRes = await fetch(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gemma2-9b-it',
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 1024,
-          temperature: 0.4,
-        }),
-      }
-    );
-
+    if (groqRes.status === 429) {
+      return res.status(429).json({ error: 'Daily quota exhausted. Please try again tomorrow.' });
+    }
     if (!groqRes.ok) {
-      const err = await groqRes.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `Groq API error ${groqRes.status}`);
+      const body = await groqRes.json().catch(() => ({}));
+      return res.status(502).json({ error: body?.error?.message || `Groq error ${groqRes.status}` });
     }
 
-    const data = await groqRes.json();
-    const summary = data?.choices?.[0]?.message?.content;
-    if (!summary) throw new Error('No summary returned from Groq.');
+    const data    = await groqRes.json();
+    const summary = data.choices?.[0]?.message?.content?.trim();
+    if (!summary) return res.status(502).json({ error: 'Empty response from Groq' });
 
-    return res.status(200).json({ summary });
+    return res.status(200).json({ summary, model: 'Llama 3.3 70B · Groq' });
 
   } catch (err) {
-    console.error('Summarize error:', err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Server error. Please try again.' });
   }
-};
+}
